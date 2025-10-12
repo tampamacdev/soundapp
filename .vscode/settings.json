@@ -1,0 +1,40 @@
+{
+    // TypeScript + React Native
+    "typescript.suggest.autoImports": true,
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "emmet.includeLanguages": {
+      "javascript": "javascriptreact",
+      "typescript": "typescriptreact"
+    },
+  
+    // Formatting & Linting
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": true
+    },
+    "eslint.validate": [
+      "javascript",
+      "javascriptreact",
+      "typescript",
+      "typescriptreact"
+    ],
+  
+    // React Native specific
+    "react-native.packager.port": 8081,
+    "debug.node.autoAttach": "on-debug-breakpoint",
+  
+    // File associations
+    "files.associations": {
+      "*.tsx": "typescriptreact",
+      "*.jsx": "typescriptreact"
+    },
+  
+    // IntelliSense
+    "typescript.suggest.paths": true,
+    "typescript.preferences.includePackageJsonAutoImports": "auto",
+  
+    // Performance
+    "editor.suggestSelection": "first",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue"
+  }
