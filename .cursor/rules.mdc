@@ -1,0 +1,22 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+
+# React Native + Expo Rules
+
+## Coding Standards
+
+- Use TypeScript with strict mode
+- Prefer functional components with hooks
+- Use React.FC for typed props
+- Always type useState and useEffect
+
+## Expo Patterns
+
+- Use `npx expo install` for modules
+- Prefer Expo SDK over third-party native libs
+- Use `Platform.select()` for platform differences
+
+## File Structure
