@@ -15,6 +15,8 @@ import {
   fileToBase64,
   base64ToArrayBuffer,
 } from "../utils/storage";
+import { audioAssets } from "../assets";
+import { audioFiles } from "../assets/audio";
 
 interface SamplePad {
   id: string;
@@ -25,9 +27,9 @@ interface SamplePad {
 }
 
 const defaultSamples: SamplePad[] = [
-  { id: "1", name: "Snare", fileName: "assets/snare.mp3", isDefault: true },
-  { id: "2", name: "Kick", fileName: "assets/kick.mp3", isDefault: true },
-  { id: "3", name: "Hi-Hat", fileName: "assets/hi-hat.mp3", isDefault: true },
+  { id: "1", name: "Snare", fileName: "snare.mp3", isDefault: true },
+  { id: "2", name: "Kick", fileName: "kick.mp3", isDefault: true },
+  { id: "3", name: "Hi-Hat", fileName: "hi-hat.mp3", isDefault: true },
 ];
 
 export default function SamplePadScreen() {
@@ -97,8 +99,11 @@ export default function SamplePadScreen() {
   const loadDefaultSamples = async (context: AudioContext) => {
     for (const sample of defaultSamples) {
       try {
-        // Use the correct path for Expo web assets
-        const response = await fetch(`./assets/${sample.fileName}`);
+        // Use imported asset URLs for web builds
+        const assetUrl =
+          audioFiles[sample.fileName] || `./assets/${sample.fileName}`;
+
+        const response = await fetch(assetUrl);
         const arrayBuffer = await response.arrayBuffer();
         const buffer = await context.decodeAudioData(arrayBuffer);
         audioBuffers.current.set(sample.id, buffer);

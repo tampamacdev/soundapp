@@ -9,6 +9,8 @@ import TracksScreen from "./screens/TracksScreen";
 import MixerScreen from "./screens/MixerScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import SamplePadScreen from "./screens/SamplePadScreen";
+// Import assets to ensure they're included in the bundle
+import "./assets";
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
