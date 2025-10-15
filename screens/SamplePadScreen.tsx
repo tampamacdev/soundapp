@@ -8,13 +8,20 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { saveSamples, loadSamples, StoredSample } from "../utils/storage";
+import {
+  saveSamples,
+  loadSamples,
+  StoredSample,
+  fileToBase64,
+  base64ToArrayBuffer,
+} from "../utils/storage";
 
 interface SamplePad {
   id: string;
   name: string;
   fileName: string;
   isDefault: boolean;
+  fileData?: string; // Base64 encoded file data for persistence
 }
 
 const defaultSamples: SamplePad[] = [
@@ -51,6 +58,7 @@ export default function SamplePadScreen() {
           const context = new AudioContext();
           setAudioContext(context);
           await loadDefaultSamples(context);
+          await loadUserSamplesFromStorage(context);
         } catch (error) {
           console.error("Failed to initialize audio:", error);
         }
@@ -58,6 +66,31 @@ export default function SamplePadScreen() {
       initAudio();
     }
   }, []);
+
+  // Load user samples from persistent storage
+  const loadUserSamplesFromStorage = async (context: AudioContext) => {
+    try {
+      const userSamples = await loadSamples();
+      for (const sample of userSamples) {
+        if (sample.fileData) {
+          try {
+            // Convert base64 back to ArrayBuffer
+            const arrayBuffer = base64ToArrayBuffer(sample.fileData);
+            const buffer = await context.decodeAudioData(arrayBuffer);
+            audioBuffers.current.set(sample.id, buffer);
+            console.log(`✅ Loaded persisted sample: ${sample.name}`);
+          } catch (error) {
+            console.error(
+              `Failed to load persisted sample ${sample.name}:`,
+              error
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load persisted samples:", error);
+    }
+  };
 
   // Load default samples
 
@@ -88,6 +121,15 @@ export default function SamplePadScreen() {
     }
 
     try {
+      // Check AudioContext state
+      console.log("AudioContext state:", audioContext.state);
+
+      // Resume AudioContext if suspended
+      if (audioContext.state === "suspended") {
+        console.log("Resuming suspended AudioContext");
+        await audioContext.resume();
+      }
+
       const buffer = audioBuffers.current.get(sampleId);
       if (!buffer) {
         console.error("Sample buffer not found:", sampleId);
@@ -110,50 +152,145 @@ export default function SamplePadScreen() {
     }
   };
 
-  // Add new sample
+  // Add new sample via file browser
   const addSample = async () => {
-    const newSample: SamplePad = {
-      id: Date.now().toString(),
-      name: `Sample ${samples.length + 1}`,
-      fileName: "",
-      isDefault: false,
-    };
-    const updatedSamples = [...samples, newSample];
-    setSamples(updatedSamples);
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "File browser",
+        "File browser is only available in web version"
+      );
+      return;
+    }
 
-    // Save to storage
-    const userSamples = updatedSamples.filter((s) => !s.isDefault);
-    await saveSamples(userSamples);
+    try {
+      // Create file input element
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "audio/*";
+      input.multiple = false;
+
+      input.onchange = async (event) => {
+        const file = (event.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith("audio/")) {
+          Alert.alert("Invalid file", "Please select an audio file");
+          return;
+        }
+
+        // Check file size (limit to 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          Alert.alert(
+            "File too large",
+            "Please select a file smaller than 10MB"
+          );
+          return;
+        }
+
+        try {
+          // Convert file to base64 for persistent storage
+          const fileData = await fileToBase64(file);
+
+          // Create new sample
+          const newSample: SamplePad = {
+            id: Date.now().toString(),
+            name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
+            fileName: file.name,
+            isDefault: false,
+            fileData: fileData, // Store file data for persistence
+          };
+
+          // Load audio file
+          const arrayBuffer = await file.arrayBuffer();
+          const buffer = await audioContext!.decodeAudioData(arrayBuffer);
+          audioBuffers.current.set(newSample.id, buffer);
+
+          // Add to samples
+          const updatedSamples = [...samples, newSample];
+          setSamples(updatedSamples);
+
+          // Save to storage (including file data)
+          const userSamples = updatedSamples.filter((s) => !s.isDefault);
+          await saveSamples(userSamples);
+
+          console.log(
+            `✅ Added new sample: ${newSample.name} (${buffer.duration.toFixed(
+              2
+            )}s)`
+          );
+        } catch (error) {
+          console.error("Failed to load audio file:", error);
+          Alert.alert(
+            "Error",
+            "Failed to load audio file. Please try a different file."
+          );
+        }
+      };
+
+      // Trigger file browser
+      input.click();
+    } catch (error) {
+      console.error("File browser error:", error);
+      Alert.alert("Error", "Failed to open file browser");
+    }
   };
 
   // Delete sample
   const deleteSample = async (sampleId: string) => {
+    console.log("Delete sample called with ID:", sampleId);
     const sample = samples.find((s) => s.id === sampleId);
+    console.log("Found sample:", sample);
+
     if (sample?.isDefault) {
       Alert.alert("Cannot delete", "Default samples cannot be deleted");
       return;
     }
 
-    Alert.alert(
-      "Delete Sample",
-      "Are you sure you want to delete this sample?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const updatedSamples = samples.filter((s) => s.id !== sampleId);
-            setSamples(updatedSamples);
-            audioBuffers.current.delete(sampleId);
+    // Use browser confirm for web, Alert.alert for mobile
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "Are you sure you want to delete this sample?"
+      );
+      if (confirmed) {
+        console.log("Deleting sample:", sampleId);
+        console.log("AudioContext state before deletion:", audioContext?.state);
 
-            // Save to storage
-            const userSamples = updatedSamples.filter((s) => !s.isDefault);
-            await saveSamples(userSamples);
+        const updatedSamples = samples.filter((s) => s.id !== sampleId);
+        setSamples(updatedSamples);
+        audioBuffers.current.delete(sampleId);
+
+        // Save to storage
+        const userSamples = updatedSamples.filter((s) => !s.isDefault);
+        await saveSamples(userSamples);
+
+        console.log("AudioContext state after deletion:", audioContext?.state);
+        console.log("Sample deleted successfully");
+      }
+    } else {
+      Alert.alert(
+        "Delete Sample",
+        "Are you sure you want to delete this sample?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              console.log("Deleting sample:", sampleId);
+              const updatedSamples = samples.filter((s) => s.id !== sampleId);
+              setSamples(updatedSamples);
+              audioBuffers.current.delete(sampleId);
+
+              // Save to storage
+              const userSamples = updatedSamples.filter((s) => !s.isDefault);
+              await saveSamples(userSamples);
+              console.log("Sample deleted successfully");
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Toggle edit mode
@@ -177,10 +314,13 @@ export default function SamplePadScreen() {
           }
         }}
       >
-        {isEditing && !isAddButton && (
+        {isEditing && !isAddButton && !sample.isDefault && (
           <TouchableOpacity
             style={styles.deleteButton}
-            onPress={() => deleteSample(sample.id)}
+            onPress={(e) => {
+              e.stopPropagation();
+              deleteSample(sample.id);
+            }}
           >
             <Text style={styles.deleteButtonText}>×</Text>
           </TouchableOpacity>
@@ -188,6 +328,8 @@ export default function SamplePadScreen() {
 
         <Text
           style={[styles.samplePadText, isAddButton && styles.addButtonText]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
         >
           {isAddButton ? "+" : sample.name}
         </Text>
@@ -198,8 +340,23 @@ export default function SamplePadScreen() {
   // Create grid layout (Z-pattern)
   const createGrid = () => {
     const items = [...samples];
+
+    // Debug logging
+    console.log(
+      "Creating grid with samples:",
+      samples.length,
+      "items:",
+      items.length
+    );
+
+    // Add the "+" button at the end of all samples when editing
     if (isEditing) {
       items.push({ id: "add", name: "+", fileName: "", isDefault: false });
+      console.log("Added + button, total items:", items.length);
+      console.log(
+        "Items in order:",
+        items.map((item) => item.name)
+      );
     }
 
     const grid = [];
@@ -207,10 +364,16 @@ export default function SamplePadScreen() {
 
     for (let i = 0; i < items.length; i += itemsPerRow) {
       const row = items.slice(i, i + itemsPerRow);
-      const isEvenRow = Math.floor(i / itemsPerRow) % 2 === 0;
+      const rowIndex = Math.floor(i / itemsPerRow);
 
-      // Reverse order for even rows (Z-pattern)
-      const orderedRow = isEvenRow ? row : [...row].reverse();
+      // Z-pattern: each row goes left to right, but rows snake down
+      // Row 0: left to right, Row 1: left to right, Row 2: left to right, etc.
+      const orderedRow = row; // Always left to right
+
+      console.log(
+        `Row ${rowIndex}:`,
+        orderedRow.map((item) => item.name)
+      );
 
       grid.push(
         <View key={i} style={styles.sampleRow}>
@@ -314,9 +477,10 @@ const styles = StyleSheet.create({
   },
   samplePadText: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "500",
     textAlign: "center",
+    lineHeight: 12,
   },
   addButtonText: {
     fontSize: 24,

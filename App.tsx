@@ -23,15 +23,38 @@ function SettingsStack() {
 }
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  // Testing: Force specific screen via environment variable
+  const TEST_SCREEN = process.env.EXPO_PUBLIC_TEST_SCREEN;
 
-  const handleSplashFinish = () => {
-    setShowSplash(false);
-  };
-
-  if (showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+  // Override for testing specific screens
+  if (TEST_SCREEN === "SamplePad") {
+    return (
+      <NavigationContainer>
+        <SamplePadScreen />
+      </NavigationContainer>
+    );
   }
+
+  if (TEST_SCREEN === "Mixer") {
+    return <MixerScreen />;
+  }
+
+  if (TEST_SCREEN === "Tracks") {
+    return <TracksScreen />;
+  }
+
+  if (TEST_SCREEN === "Settings") {
+    return <SettingsScreen />;
+  }
+
+  // Splash screen disabled - go directly to main app
+  // const [showSplash, setShowSplash] = useState(true);
+  // const handleSplashFinish = () => {
+  //   setShowSplash(false);
+  // };
+  // if (showSplash) {
+  //   return <SplashScreen onFinish={handleSplashFinish} />;
+  // }
 
   return (
     <NavigationContainer>

@@ -7,6 +7,7 @@ export interface StoredSample {
   name: string;
   fileName: string;
   isDefault: boolean;
+  fileData?: string; // Base64 encoded file data for persistence
 }
 
 export const saveSamples = async (samples: StoredSample[]): Promise<void> => {
@@ -37,4 +38,27 @@ export const clearSamples = async (): Promise<void> => {
   } catch (error) {
     console.error("Failed to clear samples:", error);
   }
+};
+
+// Convert file to base64 for storage
+export const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]); // Remove data:audio/...;base64, prefix
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+// Convert base64 back to ArrayBuffer for Web Audio
+export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
 };
