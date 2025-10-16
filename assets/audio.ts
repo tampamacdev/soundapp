@@ -7,7 +7,7 @@ import drumsMp3 from "./drums.mp3";
 import pianoMp3 from "./piano.mp3";
 
 // Export as a map for easy access
-export const audioFiles = {
+export const audioFiles: Record<string, string> = {
   "snare.mp3": snareMp3,
   "kick.mp3": kickMp3,
   "hi-hat.mp3": hiHatMp3,

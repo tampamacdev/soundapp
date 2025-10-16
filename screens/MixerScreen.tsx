@@ -8,7 +8,10 @@ import {
   Platform,
 } from "react-native";
 import Slider from "@react-native-community/slider";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { audioFiles } from "../assets/audio";
+import { AudioEngine } from "../types/AudioEngine";
+import { AudioEngineFactory } from "../audio/AudioEngineFactory";
 
 interface TrackMixer {
   id: string;
@@ -31,35 +34,32 @@ export default function MixerScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [shortestDuration, setShortestDuration] = useState<number>(0);
-  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const audioBuffers = useRef<Map<string, AudioBuffer>>(new Map());
-  const gainNodes = useRef<Map<string, GainNode>>(new Map());
-  const sourceNodes = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+  const [audioEngine] = useState<AudioEngine>(() =>
+    AudioEngineFactory.create()
+  );
+  const audioBuffers = useRef<Map<string, any>>(new Map());
+  const activeSources = useRef<Map<string, any>>(new Map());
 
   // Load audio files and initialize audio context
   useEffect(() => {
-    if (Platform.OS === "web") {
-      const initAudio = async () => {
-        try {
-          const context = new AudioContext();
-          setAudioContext(context);
-          await loadAudioFiles(context);
-        } catch (error) {
-          console.error("Failed to initialize audio:", error);
-          Alert.alert("Audio Error", "Failed to initialize audio system");
-        }
-      };
-      initAudio();
-    } else {
-      Alert.alert(
-        "Audio not available",
-        "Web Audio API is only available in web version"
-      );
-    }
+    const initAudio = async () => {
+      try {
+        await audioEngine.initialize();
+        await loadAudioFiles();
+        setIsLoading(false);
+        console.log("✅ Audio system initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize audio:", error);
+        Alert.alert("Audio Error", "Failed to initialize audio system");
+        setIsLoading(false);
+      }
+    };
+
+    initAudio();
   }, []);
 
   // Load all audio files
-  const loadAudioFiles = async (context: AudioContext) => {
+  const loadAudioFiles = async () => {
     try {
       const loadedTracks = await Promise.all(
         trackData.map(async (track) => {
@@ -69,10 +69,7 @@ export default function MixerScreen() {
               throw new Error(`Asset not found: ${track.fileName}`);
             }
 
-            const response = await fetch(assetUrl);
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = await context.decodeAudioData(arrayBuffer);
-
+            const buffer = await audioEngine.loadAudioFile(assetUrl);
             audioBuffers.current.set(track.id, buffer);
 
             return {
@@ -97,11 +94,9 @@ export default function MixerScreen() {
         setShortestDuration(shortest);
       }
 
-      setIsLoading(false);
       console.log("✅ All audio files loaded successfully");
     } catch (error) {
       console.error("Failed to load audio files:", error);
-      setIsLoading(false);
     }
   };
 
@@ -109,10 +104,10 @@ export default function MixerScreen() {
     setTrackData((prevTracks) =>
       prevTracks.map((track) => {
         if (track.id === trackId) {
-          // Update gain node if it exists
-          const gainNode = gainNodes.current.get(trackId);
-          if (gainNode) {
-            gainNode.gain.value = volume;
+          // Update volume in audio engine
+          const sourceId = activeSources.current.get(trackId);
+          if (sourceId) {
+            audioEngine.setVolume(sourceId, volume);
           }
           return { ...track, volume };
         }
@@ -122,53 +117,27 @@ export default function MixerScreen() {
   };
 
   const handlePlayPause = async () => {
-    if (!audioContext) {
-      Alert.alert("Audio not available", "Audio context not initialized");
+    if (!audioEngine.isInitialized()) {
+      Alert.alert("Audio not available", "Audio engine not initialized");
       return;
     }
 
     if (isPlaying) {
       // Stop all playback
-      sourceNodes.current.forEach((sourceNode) => {
-        try {
-          sourceNode.stop();
-        } catch (error) {
-          // Source might already be stopped
-        }
-      });
-      sourceNodes.current.clear();
-      gainNodes.current.clear();
+      await audioEngine.stopAll();
+      activeSources.current.clear();
       setIsPlaying(false);
     } else {
       // Start playback
       try {
-        // Resume AudioContext if suspended
-        if (audioContext.state === "suspended") {
-          await audioContext.resume();
-        }
-
-        // Create gain nodes and start playback for each track
-        trackData.forEach((track) => {
+        // Start playback for each track
+        for (const track of trackData) {
           const buffer = audioBuffers.current.get(track.id);
           if (buffer) {
-            const sourceNode = audioContext.createBufferSource();
-            const gainNode = audioContext.createGain();
-
-            sourceNode.buffer = buffer;
-            gainNode.gain.value = track.volume;
-
-            // Connect: source -> gain -> destination
-            sourceNode.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-
-            // Store references
-            sourceNodes.current.set(track.id, sourceNode);
-            gainNodes.current.set(track.id, gainNode);
-
-            // Start playback
-            sourceNode.start(0);
+            const source = await audioEngine.playSample(buffer, track.volume);
+            activeSources.current.set(track.id, source.id);
           }
-        });
+        }
 
         setIsPlaying(true);
         console.log("🎵 Started simultaneous playback of all tracks");
@@ -190,7 +159,6 @@ export default function MixerScreen() {
           onValueChange={(value) => handleVolumeChange(item.id, value)}
           minimumTrackTintColor="#4a90e2"
           maximumTrackTintColor="#333"
-          thumbStyle={styles.sliderThumb}
         />
       </View>
       <View style={styles.trackNameContainer}>
@@ -207,16 +175,16 @@ export default function MixerScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading audio files...</Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Track Mixer Section */}
       <View style={styles.mixerSection}>
         <Text style={styles.sectionTitle}>Track Mixer</Text>
@@ -250,7 +218,7 @@ export default function MixerScreen() {
           </Text>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

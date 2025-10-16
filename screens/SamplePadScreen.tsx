@@ -8,6 +8,7 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   saveSamples,
   loadSamples,
@@ -17,6 +18,8 @@ import {
 } from "../utils/storage";
 import { audioAssets } from "../assets";
 import { audioFiles } from "../assets/audio";
+import { AudioEngine } from "../types/AudioEngine";
+import { AudioEngineFactory } from "../audio/AudioEngineFactory";
 
 interface SamplePad {
   id: string;
@@ -36,8 +39,11 @@ export default function SamplePadScreen() {
   const navigation = useNavigation();
   const [samples, setSamples] = useState<SamplePad[]>(defaultSamples);
   const [isEditing, setIsEditing] = useState(false);
-  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-  const audioBuffers = useRef<Map<string, AudioBuffer>>(new Map());
+  const [audioEngine] = useState<AudioEngine>(() =>
+    AudioEngineFactory.create()
+  );
+  const audioBuffers = useRef<Map<string, any>>(new Map());
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load samples from storage and initialize audio
   useEffect(() => {
@@ -52,25 +58,35 @@ export default function SamplePadScreen() {
       }
     };
 
-    loadUserSamples();
+    const initializeAudio = async () => {
+      try {
+        // Initialize audio engine
+        await audioEngine.initialize();
 
-    if (Platform.OS === "web") {
-      const initAudio = async () => {
-        try {
-          const context = new AudioContext();
-          setAudioContext(context);
-          await loadDefaultSamples(context);
-          await loadUserSamplesFromStorage(context);
-        } catch (error) {
-          console.error("Failed to initialize audio:", error);
+        // Load user samples
+        const userSamples = await loadSamples();
+        if (userSamples.length > 0) {
+          setSamples([...defaultSamples, ...userSamples]);
         }
-      };
-      initAudio();
-    }
+
+        // Load default samples
+        await loadDefaultSamples();
+        await loadUserSamplesFromStorage();
+
+        setIsLoading(false);
+        console.log("✅ Audio system initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize audio:", error);
+        Alert.alert("Audio Error", "Failed to initialize audio system");
+        setIsLoading(false);
+      }
+    };
+
+    initializeAudio();
   }, []);
 
   // Load user samples from persistent storage
-  const loadUserSamplesFromStorage = async (context: AudioContext) => {
+  const loadUserSamplesFromStorage = async () => {
     try {
       const userSamples = await loadSamples();
       for (const sample of userSamples) {
@@ -78,7 +94,10 @@ export default function SamplePadScreen() {
           try {
             // Convert base64 back to ArrayBuffer
             const arrayBuffer = base64ToArrayBuffer(sample.fileData);
-            const buffer = await context.decodeAudioData(arrayBuffer);
+            // Create a blob URL for the audio engine
+            const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+            const url = URL.createObjectURL(blob);
+            const buffer = await audioEngine.loadAudioFile(url);
             audioBuffers.current.set(sample.id, buffer);
             console.log(`✅ Loaded persisted sample: ${sample.name}`);
           } catch (error) {
@@ -96,16 +115,14 @@ export default function SamplePadScreen() {
 
   // Load default samples
 
-  const loadDefaultSamples = async (context: AudioContext) => {
+  const loadDefaultSamples = async () => {
     for (const sample of defaultSamples) {
       try {
         // Use imported asset URLs for web builds
         const assetUrl =
           audioFiles[sample.fileName] || `./assets/${sample.fileName}`;
 
-        const response = await fetch(assetUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = await context.decodeAudioData(arrayBuffer);
+        const buffer = await audioEngine.loadAudioFile(assetUrl);
         audioBuffers.current.set(sample.id, buffer);
 
         console.log(`✅ Loaded ${sample.name}: ${buffer.duration.toFixed(2)}s`);
@@ -117,24 +134,12 @@ export default function SamplePadScreen() {
 
   // Play sample
   const playSample = async (sampleId: string) => {
-    if (Platform.OS !== "web" || !audioContext) {
-      Alert.alert(
-        "Audio not available",
-        "Web Audio API is only available in web version"
-      );
+    if (!audioEngine.isInitialized()) {
+      Alert.alert("Audio not available", "Audio engine not initialized");
       return;
     }
 
     try {
-      // Check AudioContext state
-      console.log("AudioContext state:", audioContext.state);
-
-      // Resume AudioContext if suspended
-      if (audioContext.state === "suspended") {
-        console.log("Resuming suspended AudioContext");
-        await audioContext.resume();
-      }
-
       const buffer = audioBuffers.current.get(sampleId);
       if (!buffer) {
         console.error("Sample buffer not found:", sampleId);
@@ -145,15 +150,13 @@ export default function SamplePadScreen() {
       console.log(
         `🎵 Sample ${sampleId}: ${buffer.duration.toFixed(2)}s, ${
           buffer.sampleRate
-        }Hz, ${buffer.numberOfChannels}ch, ${buffer.length} samples`
+        }Hz, ${buffer.channels}ch`
       );
 
-      const source = audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContext.destination);
-      source.start(0);
+      await audioEngine.playSample(buffer);
     } catch (error) {
       console.error("Failed to play sample:", error);
+      Alert.alert("Playback Error", "Failed to play audio sample");
     }
   };
 
@@ -208,7 +211,9 @@ export default function SamplePadScreen() {
 
           // Load audio file
           const arrayBuffer = await file.arrayBuffer();
-          const buffer = await audioContext!.decodeAudioData(arrayBuffer);
+          const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+          const url = URL.createObjectURL(blob);
+          const buffer = await audioEngine.loadAudioFile(url);
           audioBuffers.current.set(newSample.id, buffer);
 
           // Add to samples
@@ -259,7 +264,10 @@ export default function SamplePadScreen() {
       );
       if (confirmed) {
         console.log("Deleting sample:", sampleId);
-        console.log("AudioContext state before deletion:", audioContext?.state);
+        console.log(
+          "Audio engine state before deletion:",
+          audioEngine.isInitialized()
+        );
 
         const updatedSamples = samples.filter((s) => s.id !== sampleId);
         setSamples(updatedSamples);
@@ -269,7 +277,10 @@ export default function SamplePadScreen() {
         const userSamples = updatedSamples.filter((s) => !s.isDefault);
         await saveSamples(userSamples);
 
-        console.log("AudioContext state after deletion:", audioContext?.state);
+        console.log(
+          "Audio engine state after deletion:",
+          audioEngine.isInitialized()
+        );
         console.log("Sample deleted successfully");
       }
     } else {
@@ -390,8 +401,18 @@ export default function SamplePadScreen() {
     return grid;
   };
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading audio system...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -410,7 +431,7 @@ export default function SamplePadScreen() {
 
       {/* Sample Grid */}
       <View style={styles.sampleGrid}>{createGrid()}</View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -418,6 +439,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#1a1a2e",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "#ffffff",
+    fontWeight: "500",
   },
   header: {
     flexDirection: "row",
