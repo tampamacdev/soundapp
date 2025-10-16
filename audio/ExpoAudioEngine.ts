@@ -16,7 +16,7 @@ export class ExpoAudioEngine implements AudioEngine {
         playThroughEarpieceAndroid: false,
       });
       this.isInitializedFlag = true;
-      console.log("✅ Expo Audio Engine initialized");
+      console.log("✅ Expo Audio Engine initialized successfully");
     } catch (error) {
       console.error("Failed to initialize Expo Audio:", error);
       throw error;
@@ -51,8 +51,10 @@ export class ExpoAudioEngine implements AudioEngine {
     const sourceId = `source_${Date.now()}_${Math.random()}`;
 
     try {
+      console.log("🎵 Playing sample with Expo AV, volume:", volume);
       await sound.setVolumeAsync(volume);
       await sound.playAsync();
+      console.log("✅ Sample playback started successfully");
 
       const audioSource: AudioSource = {
         id: sourceId,

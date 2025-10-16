@@ -13,7 +13,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMotionUsageDescription": "This app uses motion sensors for gesture recognition and user interaction."
+      }
     },
     "android": {
       "adaptiveIcon": {

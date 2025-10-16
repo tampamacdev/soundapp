@@ -4,7 +4,10 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { Text } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import SplashScreen from "./components/SplashScreen";
 import TracksScreen from "./screens/TracksScreen";
 import MixerScreen from "./screens/MixerScreen";
@@ -15,6 +18,59 @@ import "./assets";
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+function MainTabNavigator() {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: "#1a1a2e",
+          borderTopColor: "#333",
+          height: 60 + insets.bottom, // Add bottom safe area
+          paddingBottom: insets.bottom, // Add bottom padding
+          paddingTop: 8,
+        },
+        tabBarActiveTintColor: "#4a90e2",
+        tabBarInactiveTintColor: "#b0b0b0",
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "500",
+        },
+      }}
+    >
+      <Tab.Screen
+        name="Tracks"
+        component={TracksScreen}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>🎵</Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Mixer"
+        component={MixerScreen}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>🎛️</Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsStack}
+        options={{
+          tabBarIcon: ({ color }) => (
+            <Text style={{ fontSize: 20, color }}>⚙️</Text>
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
 
 function SettingsStack() {
   return (
@@ -62,52 +118,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Tab.Navigator
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: {
-              backgroundColor: "#1a1a2e",
-              borderTopColor: "#333",
-              height: 60,
-              paddingBottom: 8,
-              paddingTop: 8,
-            },
-            tabBarActiveTintColor: "#4a90e2",
-            tabBarInactiveTintColor: "#b0b0b0",
-            tabBarLabelStyle: {
-              fontSize: 12,
-              fontWeight: "500",
-            },
-          }}
-        >
-          <Tab.Screen
-            name="Tracks"
-            component={TracksScreen}
-            options={{
-              tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 20, color }}>🎵</Text>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="Mixer"
-            component={MixerScreen}
-            options={{
-              tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 20, color }}>🎛️</Text>
-              ),
-            }}
-          />
-          <Tab.Screen
-            name="Settings"
-            component={SettingsStack}
-            options={{
-              tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 20, color }}>⚙️</Text>
-              ),
-            }}
-          />
-        </Tab.Navigator>
+        <MainTabNavigator />
         <StatusBar style="light" />
       </NavigationContainer>
     </SafeAreaProvider>

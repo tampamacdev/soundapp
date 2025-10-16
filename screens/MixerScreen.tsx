@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { audioFiles } from "../assets/audio";
 import { AudioEngine } from "../types/AudioEngine";
 import { AudioEngineFactory } from "../audio/AudioEngineFactory";
+import { Asset } from "expo-asset";
 
 interface TrackMixer {
   id: string;
@@ -40,6 +41,11 @@ export default function MixerScreen() {
   const audioBuffers = useRef<Map<string, any>>(new Map());
   const activeSources = useRef<Map<string, any>>(new Map());
 
+  // Get audio engine type for display
+  const getAudioEngineType = () => {
+    return audioEngine.constructor.name;
+  };
+
   // Load audio files and initialize audio context
   useEffect(() => {
     const initAudio = async () => {
@@ -64,11 +70,22 @@ export default function MixerScreen() {
       const loadedTracks = await Promise.all(
         trackData.map(async (track) => {
           try {
-            const assetUrl = audioFiles[track.fileName];
-            if (!assetUrl) {
-              throw new Error(`Asset not found: ${track.fileName}`);
+            let assetUrl: string;
+
+            if (Platform.OS === "web") {
+              // Use web URLs for web platform
+              assetUrl = audioFiles[track.fileName];
+              if (!assetUrl) {
+                throw new Error(`Asset not found: ${track.fileName}`);
+              }
+            } else {
+              // Use Expo Asset API for mobile platforms
+              const asset = Asset.fromModule(audioFiles[track.fileName]);
+              await asset.downloadAsync();
+              assetUrl = asset.uri;
             }
 
+            console.log(`Loading ${track.name} from:`, assetUrl);
             const buffer = await audioEngine.loadAudioFile(assetUrl);
             audioBuffers.current.set(track.id, buffer);
 
@@ -203,6 +220,12 @@ export default function MixerScreen() {
         </View>
       )}
 
+      {/* Audio Engine Info */}
+      <View style={styles.audioEngineSection}>
+        <Text style={styles.audioEngineLabel}>Audio Engine:</Text>
+        <Text style={styles.audioEngineValue}>{getAudioEngineType()}</Text>
+      </View>
+
       {/* Playback Controls Section */}
       <View style={styles.playbackSection}>
         <Text style={styles.sectionTitle}>Playback Controls</Text>
@@ -307,6 +330,28 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#4a90e2",
     fontWeight: "bold",
+  },
+  audioEngineSection: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: "#1a2a3e",
+    marginHorizontal: 20,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  audioEngineLabel: {
+    fontSize: 14,
+    color: "#b0b0b0",
+    fontWeight: "400",
+    marginRight: 10,
+  },
+  audioEngineValue: {
+    fontSize: 14,
+    color: "#4a90e2",
+    fontWeight: "600",
   },
   playbackSection: {
     paddingHorizontal: 20,

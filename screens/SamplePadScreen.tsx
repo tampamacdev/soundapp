@@ -20,6 +20,7 @@ import { audioAssets } from "../assets";
 import { audioFiles } from "../assets/audio";
 import { AudioEngine } from "../types/AudioEngine";
 import { AudioEngineFactory } from "../audio/AudioEngineFactory";
+import { Asset } from "expo-asset";
 
 interface SamplePad {
   id: string;
@@ -118,10 +119,20 @@ export default function SamplePadScreen() {
   const loadDefaultSamples = async () => {
     for (const sample of defaultSamples) {
       try {
-        // Use imported asset URLs for web builds
-        const assetUrl =
-          audioFiles[sample.fileName] || `./assets/${sample.fileName}`;
+        let assetUrl: string;
 
+        if (Platform.OS === "web") {
+          // Use web URLs for web platform
+          assetUrl =
+            audioFiles[sample.fileName] || `./assets/${sample.fileName}`;
+        } else {
+          // Use Expo Asset API for mobile platforms
+          const asset = Asset.fromModule(audioFiles[sample.fileName]);
+          await asset.downloadAsync();
+          assetUrl = asset.uri;
+        }
+
+        console.log(`Loading ${sample.name} from:`, assetUrl);
         const buffer = await audioEngine.loadAudioFile(assetUrl);
         audioBuffers.current.set(sample.id, buffer);
 
@@ -134,6 +145,9 @@ export default function SamplePadScreen() {
 
   // Play sample
   const playSample = async (sampleId: string) => {
+    console.log("🎵 Play sample called for:", sampleId);
+    console.log("🎵 Audio engine initialized:", audioEngine.isInitialized());
+
     if (!audioEngine.isInitialized()) {
       Alert.alert("Audio not available", "Audio engine not initialized");
       return;
@@ -153,7 +167,9 @@ export default function SamplePadScreen() {
         }Hz, ${buffer.channels}ch`
       );
 
+      console.log("🎵 Calling audioEngine.playSample...");
       await audioEngine.playSample(buffer);
+      console.log("🎵 playSample completed");
     } catch (error) {
       console.error("Failed to play sample:", error);
       Alert.alert("Playback Error", "Failed to play audio sample");
